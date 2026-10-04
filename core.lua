@@ -1,6 +1,7 @@
 -- Script: KONKHMER NAK PHLIT
 -- Language: Khmer
--- Version: 4 (Full Features & Enhanced UI)
+-- Version: 6 (Persistent WalkSpeed Enforcement & Refinements)
+-- Filename: core.lua
 
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
@@ -9,20 +10,22 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
-local HttpService = game:GetService("HttpService") -- For obfuscation, not direct use in this client script
+local HttpService = game:GetService("HttpService") -- Used for GenerateGUID to obfuscate internal names
 
 -- Configuration
 local CONFIG = {
-    WindowSize = UDim2.new(0, 320, 0, 500), -- Slightly larger for more features
+    WindowSize = UDim2.new(0, 500, 0, 350),
+    SidebarWidth = 0.3,
     DefaultWalkSpeed = 16,
-    SlowWalkSpeed = 5, -- Default slow speed
-    FastWalkSpeed = 30, -- Default fast speed
+    SlowWalkSpeed = 5,
+    FastWalkSpeed = 30,
     DefaultJumpPower = 50,
-    InfiniteJumpPower = 100, -- Increased jump power for 'infinite' feel
-    FlySpeed = 2, -- Default fly speed multiplier (relative to WalkSpeed)
-    MenuToggleKey = Enum.KeyCode.RightShift, -- Key to toggle UI visibility
-    TweenInfoDefault = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, false, 0), -- Smooth transitions
+    InfiniteJumpPower = 100,
+    FlySpeed = 0.5,
+    MenuToggleKey = Enum.KeyCode.RightShift,
+    TweenInfoDefault = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, false, 0),
     TweenInfoFast = TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, 0, false, 0),
+    WalkSpeedEnforcementInterval = 0.1, -- How often to re-apply walkspeed (in seconds)
 }
 
 -- Khmer Translations
@@ -37,11 +40,11 @@ local TRANSLATIONS = {
 
     -- Home Tab
     WelcomeMessage = "សូមស្វាគមន៍មកកាន់ កូនខ្មែរ អ្នកផលិត!",
-    Instructions = "ប្រើផ្ទាំងខាងលើដើម្បីចូលប្រើមុខងារ។",
+    Instructions = "ប្រើផ្ទាំងចំហៀងដើម្បីចូលប្រើមុខងារ។",
     EnjoyScript = "សូមរីករាយជាមួយ Script របស់យើង!",
 
     -- Movement Tab
-    WalkSpeedSection = "ល្បឿនជើង",
+    WalkSpeedSection = "ល្បឿណជើង",
     SelectPlayer = "ជ្រើសរើសអ្នកលេង",
     SlowAllPlayers = "បន្ថយល្បឿនជើងទាំងអស់",
     WalkSpeedAmount = "បរិមាណល្បឿនជើង",
@@ -55,6 +58,7 @@ local TRANSLATIONS = {
     Fly = "ហោះហើរ",
     Noclip = "ដើរឆ្លងកាត់ជញ្ជាំង",
     MovementWarning = "ការហោះហើរ/Noclip អាចត្រូវបានចាប់ដោយ Anti-cheat!",
+    PersistentSpeedWarning = "ការកំណត់ល្បឿនជើងជានិច្ចមានហានិភ័យខ្ពស់ក្នុងការត្រូវបានចាប់ដោយ Anti-cheat!",
 
     -- Visuals Tab
     PlayerESP = "បង្ហាញអ្នកលេង (ESP)",
@@ -99,36 +103,40 @@ local function Notify(message)
     print(TRANSLATIONS.Notification .. ": " .. message)
 end
 
--- UI Elements
+-- UI Elements Setup
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "KONKHMER_NAK_PHLIT_GUI"
 ScreenGui.Parent = PlayerGui
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
+local UIScale = Instance.new("UIScale")
+UIScale.Scale = 0.8
+UIScale.Parent = ScreenGui
+
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = CONFIG.WindowSize
 MainFrame.Position = UDim2.new(0.5, -CONFIG.WindowSize.X.Offset / 2, 0.5, -CONFIG.WindowSize.Y.Offset / 2)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20) -- Darker background
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 MainFrame.BorderSizePixel = 0
 MainFrame.Draggable = true
 MainFrame.Active = true
 MainFrame.Parent = ScreenGui
 MainFrame.ClipsDescendants = true
 
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 10) -- More rounded
-UICorner.Parent = MainFrame
+local UICorner_Main = Instance.new("UICorner")
+UICorner_Main.CornerRadius = UDim.new(0, 10)
+UICorner_Main.Parent = MainFrame
 
-local UIStroke = Instance.new("UIStroke")
-UIStroke.Color = Color3.fromRGB(50, 50, 50)
-UIStroke.Thickness = 1
-UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-UIStroke.Parent = MainFrame
+local UIStroke_Main = Instance.new("UIStroke")
+UIStroke_Main.Color = Color3.fromRGB(50, 50, 50)
+UIStroke_Main.Thickness = 1
+UIStroke_Main.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+UIStroke_Main.Parent = MainFrame
 
 local TitleBar = Instance.new("Frame")
 TitleBar.Name = "TitleBar"
-TitleBar.Size = UDim2.new(1, 0, 0, 35) -- Slightly taller
+TitleBar.Size = UDim2.new(1, 0, 0, 35)
 TitleBar.Position = UDim2.new(0, 0, 0, 0)
 TitleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 TitleBar.BorderSizePixel = 0
@@ -142,10 +150,9 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
 TitleLabel.Size = UDim2.new(1, -40, 1, 0)
 TitleLabel.Position = UDim2.new(0, 0, 0, 0)
-TitleLabel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = TRANSLATIONS.WindowTitle
-TitleLabel.TextColor3 = Color3.fromRGB(200, 255, 255) -- Cyan-ish color
+TitleLabel.TextColor3 = Color3.fromRGB(200, 255, 255)
 TitleLabel.TextSize = 20
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextWrapped = true
@@ -163,48 +170,70 @@ CloseButton.TextSize = 20
 CloseButton.Font = Enum.Font.GothamBold
 CloseButton.Parent = TitleBar
 
-local TabPanel = Instance.new("Frame")
-TabPanel.Name = "TabPanel"
-TabPanel.Size = UDim2.new(1, 0, 0, 40) -- Taller tabs
-TabPanel.Position = UDim2.new(0, 0, 0, 35)
-TabPanel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-TabPanel.BorderSizePixel = 0
-TabPanel.Parent = MainFrame
+-- Sidebar / Tab Buttons Frame
+local SidebarFrame = Instance.new("Frame")
+SidebarFrame.Name = "SidebarFrame"
+SidebarFrame.Size = UDim2.new(CONFIG.SidebarWidth, 0, 1, -35)
+SidebarFrame.Position = UDim2.new(0, 0, 0, 35)
+SidebarFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+SidebarFrame.BorderSizePixel = 0
+SidebarFrame.Parent = MainFrame
 
-local UIListLayout_Tabs = Instance.new("UIListLayout")
-UIListLayout_Tabs.Name = "TabListLayout"
-UIListLayout_Tabs.FillDirection = Enum.FillDirection.Horizontal
-UIListLayout_Tabs.HorizontalAlignment = Enum.HorizontalAlignment.Center
-UIListLayout_Tabs.Padding = UDim.new(0, 8) -- More padding
-UIListLayout_Tabs.Parent = TabPanel
+local UIListLayout_Sidebar = Instance.new("UIListLayout")
+UIListLayout_Sidebar.Name = "SidebarLayout"
+UIListLayout_Sidebar.FillDirection = Enum.FillDirection.Vertical
+UIListLayout_Sidebar.HorizontalAlignment = Enum.HorizontalAlignment.Left
+UIListLayout_Sidebar.VerticalAlignment = Enum.VerticalAlignment.Top
+UIListLayout_Sidebar.Padding = UDim.new(0, 5)
+UIListLayout_Sidebar.Parent = SidebarFrame
 
-local TabContentFrame = Instance.new("Frame")
-TabContentFrame.Name = "TabContentFrame"
-TabContentFrame.Size = UDim2.new(1, -10, 1, -(35 + 40 + 5)) -- TitleBar + TabPanel + Padding
-TabContentFrame.Position = UDim2.new(0.5, -MainFrame.Size.X.Offset / 2 + 5, 0, 80)
-TabContentFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25) -- Slightly lighter for content
-TabContentFrame.BackgroundTransparency = 0
-TabContentFrame.BorderSizePixel = 0
-TabContentFrame.Parent = MainFrame
-TabContentFrame.ClipsDescendants = true
+local UIPadding_Sidebar = Instance.new("UIPadding")
+UIPadding_Sidebar.PaddingTop = UDim.new(0, 10)
+UIPadding_Sidebar.PaddingBottom = UDim.new(0, 10)
+UIPadding_Sidebar.PaddingLeft = UDim.new(0, 10)
+UIPadding_Sidebar.PaddingRight = UDim.new(0, 10)
+UIPadding_Sidebar.Parent = SidebarFrame
 
-local UICorner_Content = Instance.new("UICorner")
-UICorner_Content.CornerRadius = UDim.new(0, 8)
-UICorner_Content.Parent = TabContentFrame
+-- Main Content Frame (where actual tab content goes)
+local ContentPageFrame = Instance.new("Frame")
+ContentPageFrame.Name = "ContentPageFrame"
+ContentPageFrame.Size = UDim2.new(1 - CONFIG.SidebarWidth, 0, 1, -35)
+ContentPageFrame.Position = UDim2.new(CONFIG.SidebarWidth, 0, 0, 35)
+ContentPageFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+ContentPageFrame.BorderSizePixel = 0
+ContentPageFrame.Parent = MainFrame
+ContentPageFrame.ClipsDescendants = true
+
+local UIPageLayout_Content = Instance.new("UIPageLayout")
+UIPageLayout_Content.Name = "ContentPageLayout"
+UIPageLayout_Content.EasingStyle = Enum.EasingStyle.Quad
+UIPageLayout_Content.EasingDirection = Enum.EasingDirection.Out
+UIPageLayout_Content.TweenTime = 0.3
+UIPageLayout_Content.Parent = ContentPageFrame
+
+local UIPadding_Content = Instance.new("UIPadding")
+UIPadding_Content.PaddingTop = UDim.new(0, 15)
+UIPadding_Content.PaddingBottom = UDim.new(0, 15)
+UIPadding_Content.PaddingLeft = UDim.new(0, 15)
+UIPadding_Content.PaddingRight = UDim.new(0, 15)
+UIPadding_Content.Parent = ContentPageFrame
 
 local activeTab = nil
 
+-- Helper function to create a tab button for the sidebar
 local function createTabButton(name, translation)
     local Button = Instance.new("TextButton")
     Button.Name = name .. "TabButton"
-    Button.Size = UDim2.new(0, 80, 1, 0) -- Wider buttons
+    Button.Size = UDim2.new(1, 0, 0, 40)
     Button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     Button.BorderSizePixel = 0
     Button.Text = translation
     Button.TextColor3 = Color3.fromRGB(220, 220, 220)
     Button.TextSize = 16
     Button.Font = Enum.Font.Gotham
-    Button.Parent = TabPanel
+    Button.TextXAlignment = Enum.TextXAlignment.Left
+    Button.TextWrapped = true
+    Button.Parent = SidebarFrame
 
     local UICorner_Btn = Instance.new("UICorner")
     UICorner_Btn.CornerRadius = UDim.new(0, 6)
@@ -224,16 +253,16 @@ local function createTabButton(name, translation)
     return Button
 end
 
+-- Helper function to create content frame for each tab
 local function createTabContent(name)
     local Frame = Instance.new("Frame")
     Frame.Name = name .. "TabContent"
     Frame.Size = UDim2.new(1, 0, 1, 0)
     Frame.Position = UDim2.new(0, 0, 0, 0)
-    Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     Frame.BackgroundTransparency = 1
     Frame.BorderSizePixel = 0
-    Frame.Parent = TabContentFrame
-    Frame.Visible = false
+    Frame.Parent = ContentPageFrame
 
     local UIListLayout_Content = Instance.new("UIListLayout")
     UIListLayout_Content.Name = "ContentListLayout"
@@ -242,13 +271,6 @@ local function createTabContent(name)
     UIListLayout_Content.VerticalAlignment = Enum.VerticalAlignment.Top
     UIListLayout_Content.Padding = UDim.new(0, 10)
     UIListLayout_Content.Parent = Frame
-
-    local UIPadding_Content = Instance.new("UIPadding")
-    UIPadding_Content.PaddingTop = UDim.new(0, 15)
-    UIPadding_Content.PaddingBottom = UDim.new(0, 15)
-    UIPadding_Content.PaddingLeft = UDim.new(0, 15)
-    UIPadding_Content.PaddingRight = UDim.new(0, 15)
-    UIPadding_Content.Parent = Frame
 
     return Frame
 end
@@ -280,22 +302,23 @@ local Tabs = {
     },
 }
 
+-- Function to switch active tab
 local function setActiveTab(tabName)
     if activeTab then
-        Tabs[activeTab].Content.Visible = false
         Tabs[activeTab].Button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
         Tabs[activeTab].Button.TextColor3 = Color3.fromRGB(220, 220, 220)
     end
-    Tabs[tabName].Content.Visible = true
-    Tabs[tabName].Button.BackgroundColor3 = Color3.fromRGB(70, 70, 70) -- Highlight active tab
+    Tabs[tabName].Button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
     Tabs[tabName].Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    
+    UIPageLayout_Content:JumpTo(Tabs[tabName].Content)
     activeTab = tabName
 end
 
--- Generic UI Creator Functions
-local function createToggle(parent, text, defaultState, callback)
+-- Generic UI Creator Functions for consistency
+local function createToggleButton(parent, text, defaultState, callback)
     local ToggleButton = Instance.new("TextButton")
-    ToggleButton.Name = HttpService:GenerateGUID(false) -- Obfuscate name
+    ToggleButton.Name = HttpService:GenerateGUID(false)
     ToggleButton.Size = UDim2.new(1, 0, 0, 30)
     ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     ToggleButton.BorderSizePixel = 0
@@ -320,9 +343,9 @@ local function createToggle(parent, text, defaultState, callback)
     return ToggleButton, function() return state end
 end
 
-local function createSlider(parent, text, minVal, maxVal, defaultVal, callback)
+local function createSliderWithInput(parent, text, minVal, maxVal, defaultVal, callback)
     local SliderFrame = Instance.new("Frame")
-    SliderFrame.Name = HttpService:GenerateGUID(false) -- Obfuscate name
+    SliderFrame.Name = HttpService:GenerateGUID(false)
     SliderFrame.Size = UDim2.new(1, 0, 0, 50)
     SliderFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     SliderFrame.BackgroundTransparency = 0
@@ -336,7 +359,7 @@ local function createSlider(parent, text, minVal, maxVal, defaultVal, callback)
     local Label = Instance.new("TextLabel")
     Label.Name = "Label"
     Label.Size = UDim2.new(1, -10, 0, 20)
-    Label.Position = UDim2.new(0.5, -SliderFrame.Size.X.Offset/2 + 5, 0, 5)
+    Label.Position = UDim2.new(0, 5, 0, 5)
     Label.BackgroundTransparency = 1
     Label.Text = text .. ": " .. tostring(defaultVal)
     Label.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -344,28 +367,28 @@ local function createSlider(parent, text, minVal, maxVal, defaultVal, callback)
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = SliderFrame
 
-    local Slider = Instance.new("TextBox") -- Simulating a slider with a text box for value input
-    Slider.Name = "SliderInput"
-    Slider.Size = UDim2.new(1, -10, 0, 25)
-    Slider.Position = UDim2.new(0.5, -SliderFrame.Size.X.Offset/2 + 5, 0, 20)
-    Slider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    Slider.BorderSizePixel = 0
-    Slider.Text = tostring(defaultVal)
-    Slider.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Slider.TextSize = 14
-    Slider.Font = Enum.Font.Gotham
-    Slider.TextXAlignment = Enum.TextXAlignment.Left
-    Slider.Parent = SliderFrame
+    local InputField = Instance.new("TextBox")
+    InputField.Name = "InputField"
+    InputField.Size = UDim2.new(1, -10, 0, 25)
+    InputField.Position = UDim2.new(0, 5, 0, 20)
+    InputField.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    InputField.BorderSizePixel = 0
+    InputField.Text = tostring(defaultVal)
+    InputField.TextColor3 = Color3.fromRGB(255, 255, 255)
+    InputField.TextSize = 14
+    InputField.Font = Enum.Font.Gotham
+    InputField.TextXAlignment = Enum.TextXAlignment.Left
+    InputField.Parent = SliderFrame
 
-    local UICorner_SliderInput = Instance.new("UICorner")
-    UICorner_SliderInput.CornerRadius = UDim.new(0, 5)
-    UICorner_SliderInput.Parent = Slider
+    local UICorner_InputField = Instance.new("UICorner")
+    UICorner_InputField.CornerRadius = UDim.new(0, 5)
+    UICorner_InputField.Parent = InputField
 
-    Slider.Changed:Connect(function(property)
+    InputField.Changed:Connect(function(property)
         if property == "Text" then
-            local value = tonumber(Slider.Text)
+            local value = tonumber(InputField.Text)
             if value and value >= minVal and value <= maxVal then
-                Label.Text = text .. ": " .. tostring(math.floor(value * 10) / 10) -- Display one decimal place
+                Label.Text = text .. ": " .. tostring(math.floor(value * 10) / 10)
                 if callback then callback(value) end
             else
                 Label.Text = text .. ": " .. "មិនត្រឹមត្រូវ"
@@ -373,7 +396,46 @@ local function createSlider(parent, text, minVal, maxVal, defaultVal, callback)
         end
     end)
 
-    return SliderFrame, Slider
+    return SliderFrame, InputField
+end
+
+local function createPlayerInputField(parent, placeholder, defaultText)
+    local InputField = Instance.new("TextBox")
+    InputField.Name = HttpService:GenerateGUID(false)
+    InputField.Size = UDim2.new(1, 0, 0, 30)
+    InputField.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    InputField.BorderSizePixel = 0
+    InputField.PlaceholderText = placeholder
+    InputField.Text = defaultText or ""
+    InputField.TextColor3 = Color3.fromRGB(255, 255, 255)
+    InputField.TextSize = 14
+    InputField.Font = Enum.Font.Gotham
+    InputField.Parent = parent
+
+    local UICorner_InputField = Instance.new("UICorner")
+    UICorner_InputField.CornerRadius = UDim.new(0, 5)
+    UICorner_InputField.Parent = InputField
+    return InputField
+end
+
+local function createButton(parent, text, callback, bgColor)
+    local Button = Instance.new("TextButton")
+    Button.Name = HttpService:GenerateGUID(false)
+    Button.Size = UDim2.new(1, 0, 0, 30)
+    Button.BackgroundColor3 = bgColor or Color3.fromRGB(50, 100, 150)
+    Button.BorderSizePixel = 0
+    Button.Text = text
+    Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Button.TextSize = 16
+    Button.Font = Enum.Font.GothamBold
+    Button.Parent = parent
+
+    local UICorner_Button = Instance.new("UICorner")
+    UICorner_Button.CornerRadius = UDim.new(0, 5)
+    UICorner_Button.Parent = Button
+
+    Button.MouseButton1Click:Connect(callback)
+    return Button
 end
 
 -- Home Tab Content
@@ -383,7 +445,6 @@ do
     local WelcomeLabel = Instance.new("TextLabel")
     WelcomeLabel.Name = "WelcomeLabel"
     WelcomeLabel.Size = UDim2.new(1, 0, 0, 50)
-    WelcomeLabel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     WelcomeLabel.BackgroundTransparency = 1
     WelcomeLabel.Text = TRANSLATIONS.WelcomeMessage
     WelcomeLabel.TextColor3 = Color3.fromRGB(200, 255, 255)
@@ -395,7 +456,6 @@ do
     local InstructionsLabel = Instance.new("TextLabel")
     InstructionsLabel.Name = "InstructionsLabel"
     InstructionsLabel.Size = UDim2.new(1, 0, 0, 80)
-    InstructionsLabel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     InstructionsLabel.BackgroundTransparency = 1
     InstructionsLabel.Text = TRANSLATIONS.Instructions .. "\n" .. TRANSLATIONS.EnjoyScript
     InstructionsLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
@@ -406,12 +466,42 @@ do
 end
 
 -- Movement Tab Content
+local activeSpeedTargets = {} -- {UserId = targetSpeed, ...}
+local speedEnforcementConnection = nil
+
+local function enforceWalkSpeed()
+    if not speedEnforcementConnection then
+        speedEnforcementConnection = RunService.Heartbeat:Connect(function()
+            for userId, targetSpeed in pairs(activeSpeedTargets) do
+                local player = Players:GetPlayerByUserId(userId)
+                if player and player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+                    local humanoid = player.Character.Humanoid
+                    if humanoid.WalkSpeed ~= targetSpeed then
+                        TweenService:Create(humanoid, CONFIG.TweenInfoFast, {WalkSpeed = targetSpeed}):Play()
+                    end
+                else
+                    activeSpeedTargets[userId] = nil
+                end
+            end
+            if next(activeSpeedTargets) == nil then
+                stopEnforceWalkSpeed()
+            end
+        end)
+    end
+end
+
+local function stopEnforceWalkSpeed()
+    if speedEnforcementConnection then
+        speedEnforcementConnection:Disconnect()
+        speedEnforcementConnection = nil
+    end
+end
+
 do
     local MovementContent = Tabs.Movement.Content
 
-    -- WalkSpeed Section
     local WalkSpeedSectionLabel = Instance.new("TextLabel")
-    WalkSpeedSectionLabel.Name = "WalkSpeedSectionLabel"
+    WalkSpeedSectionLabel.Name = HttpService:GenerateGUID(false)
     WalkSpeedSectionLabel.Size = UDim2.new(1, 0, 0, 25)
     WalkSpeedSectionLabel.BackgroundTransparency = 1
     WalkSpeedSectionLabel.Text = TRANSLATIONS.WalkSpeedSection
@@ -421,91 +511,63 @@ do
     WalkSpeedSectionLabel.TextXAlignment = Enum.TextXAlignment.Left
     WalkSpeedSectionLabel.Parent = MovementContent
 
-    local PlayerInputLabel = Instance.new("TextLabel")
-    PlayerInputLabel.Name = "PlayerInputLabel"
-    PlayerInputLabel.Size = UDim2.new(1, 0, 0, 20)
-    PlayerInputLabel.BackgroundTransparency = 1
-    PlayerInputLabel.Text = TRANSLATIONS.SelectPlayer
-    PlayerInputLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    PlayerInputLabel.TextSize = 14
-    PlayerInputLabel.TextXAlignment = Enum.TextXAlignment.Left
-    PlayerInputLabel.Parent = MovementContent
+    local PlayerSelectLabel = Instance.new("TextLabel")
+    PlayerSelectLabel.Name = HttpService:GenerateGUID(false)
+    PlayerSelectLabel.Size = UDim2.new(1, 0, 0, 20)
+    PlayerSelectLabel.BackgroundTransparency = 1
+    PlayerSelectLabel.Text = TRANSLATIONS.SelectPlayer
+    PlayerSelectLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    PlayerSelectLabel.TextSize = 14
+    PlayerSelectLabel.TextXAlignment = Enum.TextXAlignment.Left
+    PlayerSelectLabel.Parent = MovementContent
 
-    local PlayerInputField = Instance.new("TextBox")
-    PlayerInputField.Name = "PlayerInputField"
-    PlayerInputField.Size = UDim2.new(1, 0, 0, 30)
-    PlayerInputField.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    PlayerInputField.BorderSizePixel = 0
-    PlayerInputField.PlaceholderText = TRANSLATIONS.SelectPlayer
-    PlayerInputField.Text = ""
-    PlayerInputField.TextColor3 = Color3.fromRGB(255, 255, 255)
-    PlayerInputField.TextSize = 14
-    PlayerInputField.Font = Enum.Font.Gotham
-    PlayerInputField.Parent = MovementContent
-
-    local UICorner_PlayerInput = Instance.new("UICorner")
-    UICorner_PlayerInput.CornerRadius = UDim.new(0, 5)
-    UICorner_PlayerInput.Parent = PlayerInputField
-
-    local SlowAllToggle, getSlowAllState = createToggle(MovementContent, TRANSLATIONS.SlowAllPlayers, false)
-
-    local WalkSpeedSliderFrame, WalkSpeedInput = createSlider(MovementContent, TRANSLATIONS.WalkSpeedAmount, 0, 100, CONFIG.DefaultWalkSpeed)
-
-    local ApplySpeedButton = Instance.new("TextButton")
-    ApplySpeedButton.Name = "ApplySpeedButton"
-    ApplySpeedButton.Size = UDim2.new(1, 0, 0, 30)
-    ApplySpeedButton.BackgroundColor3 = Color3.fromRGB(50, 100, 150)
-    ApplySpeedButton.BorderSizePixel = 0
-    ApplySpeedButton.Text = TRANSLATIONS.ApplySpeed
-    ApplySpeedButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ApplySpeedButton.TextSize = 16
-    ApplySpeedButton.Font = Enum.Font.GothamBold
-    ApplySpeedButton.Parent = MovementContent
-
-    local UICorner_ApplySpeedButton = Instance.new("UICorner")
-    UICorner_ApplySpeedButton.CornerRadius = UDim.new(0, 5)
-    UICorner_ApplySpeedButton.Parent = ApplySpeedButton
-
-    local ResetSpeedButton = Instance.new("TextButton")
-    ResetSpeedButton.Name = "ResetSpeedButton"
-    ResetSpeedButton.Size = UDim2.new(1, 0, 0, 30)
-    ResetSpeedButton.BackgroundColor3 = Color3.fromRGB(150, 100, 50)
-    ResetSpeedButton.BorderSizePixel = 0
-    ResetSpeedButton.Text = TRANSLATIONS.ResetSpeed
-    ResetSpeedButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ResetSpeedButton.TextSize = 16
-    ResetSpeedButton.Font = Enum.Font.GothamBold
-    ResetSpeedButton.Parent = MovementContent
-
-    local UICorner_ResetSpeedButton = Instance.new("UICorner")
-    UICorner_ResetSpeedButton.CornerRadius = UDim.new(0, 5)
-    UICorner_ResetSpeedButton.Parent = ResetSpeedButton
-
-    local function applyWalkSpeed(player, speed)
+    local PlayerInputField = createPlayerInputField(MovementContent, TRANSLATIONS.SelectPlayer, "")
+    
+    local SlowAllToggle, getSlowAllState = createToggleButton(MovementContent, TRANSLATIONS.SlowAllPlayers, false, function(state)
+        if state then
+            Notify(TRANSLATIONS.PersistentSpeedWarning)
+        end
+    end)
+    
+    local WalkSpeedSliderFrame, WalkSpeedInput = createSliderWithInput(MovementContent, TRANSLATIONS.WalkSpeedAmount, 0, 100, CONFIG.DefaultWalkSpeed)
+    
+    local function applyWalkSpeedToTarget(player, speed)
         if player and player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
-            local humanoid = player.Character.Humanoid
-            TweenService:Create(humanoid, CONFIG.TweenInfoDefault, {WalkSpeed = speed}):Play()
+            activeSpeedTargets[player.UserId] = speed
+            TweenService:Create(player.Character.Humanoid, CONFIG.TweenInfoDefault, {WalkSpeed = speed}):Play()
+            enforceWalkSpeed()
         end
     end
 
-    ApplySpeedButton.MouseButton1Click:Connect(function()
-        local targetSpeed = tonumber(WalkSpeedInput.SliderInput.Text) or CONFIG.DefaultWalkSpeed
+    local function resetWalkSpeedForTarget(player)
+        if player and player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+            activeSpeedTargets[player.UserId] = nil
+            TweenService:Create(player.Character.Humanoid, CONFIG.TweenInfoDefault, {WalkSpeed = CONFIG.DefaultWalkSpeed}):Play()
+            if next(activeSpeedTargets) == nil then
+                stopEnforceWalkSpeed()
+            end
+        end
+    end
+
+    createButton(MovementContent, TRANSLATIONS.ApplySpeed, function()
+        local targetSpeed = tonumber(WalkSpeedInput.Text) or CONFIG.DefaultWalkSpeed
         if targetSpeed < 0 then targetSpeed = 0 end
 
         if getSlowAllState() then
+            Notify(TRANSLATIONS.PersistentSpeedWarning)
             for _, player in ipairs(Players:GetPlayers()) do
-                applyWalkSpeed(player, targetSpeed)
+                applyWalkSpeedToTarget(player, targetSpeed)
             end
             Notify(string.format(TRANSLATIONS.AllPlayersWalkSpeedSet, targetSpeed))
         else
             local targetPlayerName = PlayerInputField.Text
             if targetPlayerName == "" then
-                applyWalkSpeed(LocalPlayer, targetSpeed)
+                applyWalkSpeedToTarget(LocalPlayer, targetSpeed)
                 Notify(string.format(TRANSLATIONS.PlayerWalkSpeedSet, LocalPlayer.Name, targetSpeed))
             else
                 local targetPlayer = Players:FindFirstChild(targetPlayerName)
                 if targetPlayer then
-                    applyWalkSpeed(targetPlayer, targetSpeed)
+                    applyWalkSpeedToTarget(targetPlayer, targetSpeed)
                     Notify(string.format(TRANSLATIONS.PlayerWalkSpeedSet, targetPlayer.Name, targetSpeed))
                 else
                     Notify(string.format(TRANSLATIONS.PlayerNotFound, targetPlayerName))
@@ -514,50 +576,48 @@ do
         end
     end)
 
-    ResetSpeedButton.MouseButton1Click:Connect(function()
+    createButton(MovementContent, TRANSLATIONS.ResetSpeed, function()
         if getSlowAllState() then
+            Notify(TRANSLATIONS.PersistentSpeedWarning)
             for _, player in ipairs(Players:GetPlayers()) do
-                applyWalkSpeed(player, CONFIG.DefaultWalkSpeed)
+                resetWalkSpeedForTarget(player)
             end
             Notify(string.format(TRANSLATIONS.AllPlayersWalkSpeedSet, CONFIG.DefaultWalkSpeed))
         else
             local targetPlayerName = PlayerInputField.Text
             if targetPlayerName == "" then
-                applyWalkSpeed(LocalPlayer, CONFIG.DefaultWalkSpeed)
+                resetWalkSpeedForTarget(LocalPlayer)
                 Notify(string.format(TRANSLATIONS.PlayerWalkSpeedSet, LocalPlayer.Name, CONFIG.DefaultWalkSpeed))
             else
                 local targetPlayer = Players:FindFirstChild(targetPlayerName)
                 if targetPlayer then
-                    applyWalkSpeed(targetPlayer, CONFIG.DefaultWalkSpeed)
+                    resetWalkSpeedForTarget(targetPlayer)
                     Notify(string.format(TRANSLATIONS.PlayerWalkSpeedSet, targetPlayer.Name, CONFIG.DefaultWalkSpeed))
                 else
                     Notify(string.format(TRANSLATIONS.PlayerNotFound, targetPlayerName))
                 end
             end
         end
-    end)
+    end, Color3.fromRGB(150, 100, 50))
 
     -- Other Movement Features
     local function setupInfiniteJump(state)
-        if state then
-            LocalPlayer.Character.Humanoid.JumpPower = CONFIG.InfiniteJumpPower
-            UserInputService.InputBegan:Connect(function(input, gameProcessed)
-                if input.UserInputType == Enum.UserInputType.Keyboard or input.UserInputType == Enum.UserInputType.Gamepad1 then
-                    if input.KeyCode == Enum.KeyCode.Space and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+            if state then
+                LocalPlayer.Character.Humanoid.JumpPower = CONFIG.InfiniteJumpPower
+                UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                    if input.KeyCode == Enum.KeyCode.Space and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") and getInfiniteJumpState() then
                         LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
                     end
-                end
-            end)
-        else
-            LocalPlayer.Character.Humanoid.JumpPower = CONFIG.DefaultJumpPower
+                end)
+            else
+                LocalPlayer.Character.Humanoid.JumpPower = CONFIG.DefaultJumpPower
+            end
         end
     end
 
-    local FlyState = false
-    local NoclipState = false
-
+    local FlyConnection = nil
     local function setupFly(state)
-        FlyState = state
         local Character = LocalPlayer.Character
         if not Character then return end
         local Humanoid = Character:FindFirstChildOfClass("Humanoid")
@@ -567,31 +627,27 @@ do
         if state then
             Notify(TRANSLATIONS.MovementWarning)
             RootPart.Anchored = true
-            -- Disable gravity to make flying smoother
             Humanoid.Parent:SetAttribute("OldGravity", Workspace.Gravity)
             Workspace.Gravity = 0
 
-            local connection = RunService.RenderStepped:Connect(function()
+            FlyConnection = RunService.RenderStepped:Connect(function()
                 local Camera = Workspace.CurrentCamera
                 local CameraCFrame = Camera.CFrame
-                local forward = CameraCFrame.lookVector * CONFIG.FlySpeed * Humanoid.WalkSpeed * RunService.RenderStepped:Wait() -- Fly speed based on camera direction
-                local up = CameraCFrame.UpVector * CONFIG.FlySpeed * Humanoid.WalkSpeed * RunService.RenderStepped:Wait()
+                local moveSpeed = Humanoid.WalkSpeed * CONFIG.FlySpeed * RunService.RenderStepped:Wait()
 
-                if UserInputService:IsKeyDown(Enum.KeyCode.W) then RootPart.CFrame = RootPart.CFrame + forward end
-                if UserInputService:IsKeyDown(Enum.KeyCode.S) then RootPart.CFrame = RootPart.CFrame - forward end
-                if UserInputService:IsKeyDown(Enum.KeyCode.A) then RootPart.CFrame = RootPart.CFrame - CameraCFrame.rightVector * CONFIG.FlySpeed * Humanoid.WalkSpeed * RunService.RenderStepped:Wait() end
-                if UserInputService:IsKeyDown(Enum.KeyCode.D) then RootPart.CFrame = RootPart.CFrame + CameraCFrame.rightVector * CONFIG.FlySpeed * Humanoid.WalkSpeed * RunService.RenderStepped:Wait() end
-                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then RootPart.CFrame = RootPart.CFrame + up end
-                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then RootPart.CFrame = RootPart.CFrame - up end
+                if UserInputService:IsKeyDown(Enum.KeyCode.W) then RootPart.CFrame = RootPart.CFrame + CameraCFrame.lookVector * moveSpeed end
+                if UserInputService:IsKeyDown(Enum.KeyCode.S) then RootPart.CFrame = RootPart.CFrame - CameraCFrame.lookVector * moveSpeed end
+                if UserInputService:IsKeyDown(Enum.KeyCode.A) then RootPart.CFrame = RootPart.CFrame - CameraCFrame.rightVector * moveSpeed end
+                if UserInputService:IsKeyDown(Enum.KeyCode.D) then RootPart.CFrame = RootPart.CFrame + CameraCFrame.rightVector * moveSpeed end
+                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then RootPart.CFrame = RootPart.CFrame + CameraCFrame.UpVector * moveSpeed end
+                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then RootPart.CFrame = RootPart.CFrame - CameraCFrame.UpVector * moveSpeed end
             end)
-            RootPart:SetAttribute("FlyConnection", connection)
         else
-            if RootPart:GetAttribute("FlyConnection") then
-                RootPart:GetAttribute("FlyConnection"):Disconnect()
-                RootPart:SetAttribute("FlyConnection", nil)
+            if FlyConnection then
+                FlyConnection:Disconnect()
+                FlyConnection = nil
             end
             RootPart.Anchored = false
-            -- Restore gravity
             if Humanoid.Parent:GetAttribute("OldGravity") then
                 Workspace.Gravity = Humanoid.Parent:GetAttribute("OldGravity")
                 Humanoid.Parent:SetAttribute("OldGravity", nil)
@@ -599,8 +655,8 @@ do
         end
     end
 
+    local NoclipParts = {}
     local function setupNoclip(state)
-        NoclipState = state
         local Character = LocalPlayer.Character
         if not Character then return end
 
@@ -609,22 +665,22 @@ do
             for _, child in ipairs(Character:GetChildren()) do
                 if child:IsA("BasePart") and child.CanCollide then
                     child.CanCollide = false
-                    child:SetAttribute("OldCanCollide", true)
+                    table.insert(NoclipParts, child)
                 end
             end
         else
-            for _, child in ipairs(Character:GetChildren()) do
-                if child:IsA("BasePart") and child:GetAttribute("OldCanCollide") then
-                    child.CanCollide = true
-                    child:SetAttribute("OldCanCollide", nil)
+            for _, part in ipairs(NoclipParts) do
+                if part.Parent == Character then
+                    part.CanCollide = true
                 end
             end
+            NoclipParts = {}
         end
     end
 
-    local InfiniteJumpToggle = createToggle(MovementContent, TRANSLATIONS.InfiniteJump, false, setupInfiniteJump)
-    local FlyToggle = createToggle(MovementContent, TRANSLATIONS.Fly, false, setupFly)
-    local NoclipToggle = createToggle(MovementContent, TRANSLATIONS.Noclip, false, setupNoclip)
+    local InfiniteJumpToggle, getInfiniteJumpState = createToggleButton(MovementContent, TRANSLATIONS.InfiniteJump, false, setupInfiniteJump)
+    local FlyToggle, getFlyState = createToggleButton(MovementContent, TRANSLATIONS.Fly, false, setupFly)
+    local NoclipToggle, getNoclipState = createToggleButton(MovementContent, TRANSLATIONS.Noclip, false, setupNoclip)
 end
 
 -- Visuals Tab Content
@@ -632,7 +688,7 @@ do
     local VisualsContent = Tabs.Visuals.Content
 
     local PlayerESPLabel = Instance.new("TextLabel")
-    PlayerESPLabel.Name = "PlayerESPLabel"
+    PlayerESPLabel.Name = HttpService:GenerateGUID(false)
     PlayerESPLabel.Size = UDim2.new(1, 0, 0, 25)
     PlayerESPLabel.BackgroundTransparency = 1
     PlayerESPLabel.Text = TRANSLATIONS.PlayerESP
@@ -648,66 +704,68 @@ do
     local function updatePlayerESP(state)
         if state then
             Notify(TRANSLATIONS.VisualsWarning)
+            local function createPlayerESPBox(player)
+                if player == LocalPlayer then return end
+                
+                local char = player.Character
+                if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
+                local box = Instance.new("BillboardGui")
+                box.Size = UDim2.new(0, 150, 0, 70)
+                box.AlwaysOnTop = true
+                box.ExtentsOffset = Vector3.new(0, char.Humanoid.Head.Size.Y, 0)
+                box.Adornee = char.HumanoidRootPart
+                box.Parent = PlayerGui
+
+                local frame = Instance.new("Frame")
+                frame.Size = UDim2.new(1, 0, 1, 0)
+                frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+                frame.BackgroundTransparency = 0.7
+                frame.BorderSizePixel = 1
+                frame.BorderColor3 = Color3.fromRGB(255, 0, 0)
+                frame.Parent = box
+
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
+                nameLabel.Position = UDim2.new(0,0,0,0)
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Text = player.Name
+                nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                nameLabel.TextSize = 16
+                nameLabel.Font = Enum.Font.GothamBold
+                nameLabel.TextWrapped = true
+                nameLabel.Parent = frame
+
+                local healthLabel = Instance.new("TextLabel")
+                healthLabel.Size = UDim2.new(1, 0, 0.5, 0)
+                healthLabel.Position = UDim2.new(0,0,0.5,0)
+                healthLabel.BackgroundTransparency = 1
+                healthLabel.Text = "HP: " .. math.floor(char.Humanoid.Health)
+                healthLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+                healthLabel.TextSize = 14
+                healthLabel.Font = Enum.Font.Gotham
+                healthLabel.Parent = frame
+                
+                espBoxes[player.UserId] = {Box = box, HealthLabel = healthLabel}
+                
+                table.insert(espConnections, char.Humanoid.HealthChanged:Connect(function(health)
+                    healthLabel.Text = "HP: " .. math.floor(health)
+                    healthLabel.TextColor3 = Color3.new(1 - (health / char.Humanoid.MaxHealth), (health / char.Humanoid.MaxHealth), 0)
+                end))
+
+                table.insert(espConnections, player.CharacterRemoving:Connect(function()
+                    if espBoxes[player.UserId] then
+                        espBoxes[player.UserId].Box:Destroy()
+                        espBoxes[player.UserId] = nil
+                    end
+                end))
+            end
+
             for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer then
-                    local function createESPBox(char)
-                        local box = Instance.new("BillboardGui")
-                        box.Size = UDim2.new(0, 100, 0, 50)
-                        box.AlwaysOnTop = true
-                        box.ExtentsOffset = Vector3.new(0, char.Humanoid.Head.Size.Y, 0) -- Position above head
-                        box.Adornee = char.HumanoidRootPart
-                        box.Parent = ScreenGui -- Parent to ScreenGui for global visibility
-
-                        local frame = Instance.new("Frame")
-                        frame.Size = UDim2.new(1, 0, 1, 0)
-                        frame.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-                        frame.BackgroundTransparency = 0.8
-                        frame.BorderSizePixel = 1
-                        frame.BorderColor3 = Color3.fromRGB(255, 255, 255)
-                        frame.Parent = box
-
-                        local nameLabel = Instance.new("TextLabel")
-                        nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
-                        nameLabel.Position = UDim2.new(0,0,0,0)
-                        nameLabel.BackgroundTransparency = 1
-                        nameLabel.Text = player.Name
-                        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-                        nameLabel.TextSize = 14
-                        nameLabel.Font = Enum.Font.GothamBold
-                        nameLabel.Parent = frame
-
-                        local healthLabel = Instance.new("TextLabel")
-                        healthLabel.Size = UDim2.new(1, 0, 0.5, 0)
-                        healthLabel.Position = UDim2.new(0,0,0.5,0)
-                        healthLabel.BackgroundTransparency = 1
-                        healthLabel.Text = "HP: " .. math.floor(char.Humanoid.Health)
-                        healthLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
-                        healthLabel.TextSize = 12
-                        healthLabel.Font = Enum.Font.Gotham
-                        healthLabel.Parent = frame
-                        
-                        espBoxes[player.UserId] = {Box = box, HealthLabel = healthLabel}
-                        
-                        local healthChangedConn = char.Humanoid.HealthChanged:Connect(function(health)
-                            healthLabel.Text = "HP: " .. math.floor(health)
-                        end)
-                        table.insert(espConnections, healthChangedConn)
-
-                        local charRemovingConn = char.AncestryChanged:Connect(function(inst, parent)
-                            if not parent then -- Character removed
-                                box:Destroy()
-                                espBoxes[player.UserId] = nil
-                            end
-                        end)
-                        table.insert(espConnections, charRemovingConn)
-                    end
-
-                    if player.Character then
-                        createESPBox(player.Character)
-                    end
-                    local charAddedConn = player.CharacterAdded:Connect(createESPBox)
-                    table.insert(espConnections, charAddedConn)
+                if player.Character then
+                    createPlayerESPBox(player)
                 end
+                table.insert(espConnections, player.CharacterAdded:Connect(createPlayerESPBox))
             end
         else
             for _, conn in ipairs(espConnections) do
@@ -721,9 +779,9 @@ do
         end
     end
 
-    local PlayerESP_Toggle = createToggle(VisualsContent, TRANSLATIONS.PlayerESP, false, updatePlayerESP)
+    local PlayerESP_Toggle, getPlayerESPState = createToggleButton(VisualsContent, TRANSLATIONS.PlayerESP, false, updatePlayerESP)
 
-    local ItemESP_Toggle = createToggle(VisualsContent, TRANSLATIONS.ItemESPPlaceholder, false, function(state)
+    local ItemESP_Toggle, getItemESPState = createToggleButton(VisualsContent, TRANSLATIONS.ItemESPPlaceholder, false, function(state)
         Notify("Item ESP functionality requires game-specific implementation. This is a placeholder.")
     end)
 end
@@ -733,7 +791,7 @@ do
     local StealContent = Tabs.Steal.Content
 
     local StealTitle = Instance.new("TextLabel")
-    StealTitle.Name = "StealTitle"
+    StealTitle.Name = HttpService:GenerateGUID(false)
     StealTitle.Size = UDim2.new(1, 0, 0, 30)
     StealTitle.BackgroundTransparency = 1
     StealTitle.Text = TRANSLATIONS.StealPanelTitle
@@ -742,48 +800,19 @@ do
     StealTitle.Font = Enum.Font.GothamBold
     StealTitle.Parent = StealContent
 
-    local PlayerSelectionLabel = Instance.new("TextLabel")
-    PlayerSelectionLabel.Name = "PlayerSelectionLabel"
-    PlayerSelectionLabel.Size = UDim2.new(1, 0, 0, 20)
-    PlayerSelectionLabel.BackgroundTransparency = 1
-    PlayerSelectionLabel.Text = TRANSLATIONS.SelectPlayerToSteal
-    PlayerSelectionLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    PlayerSelectionLabel.TextSize = 14
-    PlayerSelectionLabel.TextXAlignment = Enum.TextXAlignment.Left
-    PlayerSelectionLabel.Parent = StealContent
+    local PlayerSelectLabel = Instance.new("TextLabel")
+    PlayerSelectLabel.Name = HttpService:GenerateGUID(false)
+    PlayerSelectLabel.Size = UDim2.new(1, 0, 0, 20)
+    PlayerSelectLabel.BackgroundTransparency = 1
+    PlayerSelectLabel.Text = TRANSLATIONS.SelectPlayerToSteal
+    PlayerSelectLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    PlayerSelectLabel.TextSize = 14
+    PlayerSelectLabel.TextXAlignment = Enum.TextXAlignment.Left
+    PlayerSelectLabel.Parent = StealContent
 
-    local StealPlayerInputField = Instance.new("TextBox")
-    StealPlayerInputField.Name = "StealPlayerInputField"
-    StealPlayerInputField.Size = UDim2.new(1, 0, 0, 30)
-    StealPlayerInputField.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    StealPlayerInputField.BorderSizePixel = 0
-    StealPlayerInputField.PlaceholderText = TRANSLATIONS.StealPlayerInputPlaceholder
-    StealPlayerInputField.Text = ""
-    StealPlayerInputField.TextColor3 = Color3.fromRGB(255, 255, 255)
-    StealPlayerInputField.TextSize = 14
-    StealPlayerInputField.Font = Enum.Font.Gotham
-    StealPlayerInputField.Parent = StealContent
-
-    local UICorner_StealPlayerInput = Instance.new("UICorner")
-    UICorner_StealPlayerInput.CornerRadius = UDim.new(0, 5)
-    UICorner_StealPlayerInput.Parent = StealPlayerInputField
-
-    local TeleportButton = Instance.new("TextButton")
-    TeleportButton.Name = "TeleportButton"
-    TeleportButton.Size = UDim2.new(1, 0, 0, 30)
-    TeleportButton.BackgroundColor3 = Color3.fromRGB(80, 50, 150)
-    TeleportButton.BorderSizePixel = 0
-    TeleportButton.Text = TRANSLATIONS.TeleportToPlayer
-    TeleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    TeleportButton.TextSize = 16
-    TeleportButton.Font = Enum.Font.GothamBold
-    TeleportButton.Parent = StealContent
-
-    local UICorner_TeleportButton = Instance.new("UICorner")
-    UICorner_TeleportButton.CornerRadius = UDim.new(0, 5)
-    UICorner_TeleportButton.Parent = TeleportButton
-
-    TeleportButton.MouseButton1Click:Connect(function()
+    local StealPlayerInputField = createPlayerInputField(StealContent, TRANSLATIONS.StealPlayerInputPlaceholder, "")
+    
+    createButton(StealContent, TRANSLATIONS.TeleportToPlayer, function()
         local targetPlayerName = StealPlayerInputField.Text
         local targetPlayer = Players:FindFirstChild(targetPlayerName)
         if targetPlayer and targetPlayer.Character and LocalPlayer.Character then
@@ -795,17 +824,17 @@ do
         else
             Notify(string.format(TRANSLATIONS.PlayerNotFound, targetPlayerName))
         end
-    end)
+    end, Color3.fromRGB(80, 50, 150))
 
-    local AutoStealToggle = createToggle(StealContent, TRANSLATIONS.AutoSteal, false, function(state)
+    local AutoStealToggle, getAutoStealState = createToggleButton(StealContent, TRANSLATIONS.AutoSteal, false, function(state)
         if state then Notify(TRANSLATIONS.StealActionWarning) end
         Notify("Auto Steal functionality requires game-specific implementation. This is a placeholder.")
     end)
-    local InstantStealToggle = createToggle(StealContent, TRANSLATIONS.InstantSteal, false, function(state)
+    local InstantStealToggle, getInstantStealState = createToggleButton(StealContent, TRANSLATIONS.InstantSteal, false, function(state)
         if state then Notify(TRANSLATIONS.StealActionWarning) end
         Notify("Instant Steal functionality requires game-specific implementation. This is a placeholder.")
     end)
-    local InvisibleStealToggle = createToggle(StealContent, TRANSLATIONS.InvisibleSteal, false, function(state)
+    local InvisibleStealToggle, getInvisibleStealState = createToggleButton(StealContent, TRANSLATIONS.InvisibleSteal, false, function(state)
         if state then Notify(TRANSLATIONS.StealActionWarning) end
         Notify("Invisible Steal functionality requires game-specific implementation. This is a placeholder.")
     end)
@@ -833,42 +862,23 @@ do
         end
     end
 
-    local AntiAFK_Toggle = createToggle(UtilityContent, TRANSLATIONS.AntiAFK, false, setupAntiAFK)
+    local AntiAFK_Toggle, getAntiAFKState = createToggleButton(UtilityContent, TRANSLATIONS.AntiAFK, false, setupAntiAFK)
 end
 
 -- Settings Tab Content
 do
     local SettingsContent = Tabs.Settings.Content
 
-    local ToggleUILabel = Instance.new("TextButton")
-    ToggleUILabel.Name = "ToggleUILabel"
-    ToggleUILabel.Size = UDim2.new(1, 0, 0, 30)
-    ToggleUILabel.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    ToggleUILabel.BorderSizePixel = 0
-    ToggleUILabel.Text = TRANSLATIONS.ToggleUIVisibility .. ": " .. TRANSLATIONS.Visible
-    ToggleUILabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ToggleUILabel.TextSize = 16
-    ToggleUILabel.Font = Enum.Font.Gotham
-    ToggleUILabel.Parent = SettingsContent
-
-    local UICorner_ToggleUILabel = Instance.new("UICorner")
-    UICorner_ToggleUILabel.CornerRadius = UDim.new(0, 5)
-    UICorner_ToggleUILabel.Parent = ToggleUILabel
-
-    ToggleUILabel.MouseButton1Click:Connect(function()
+    local ToggleUILabel = createButton(SettingsContent, TRANSLATIONS.ToggleUIVisibility .. ": " .. TRANSLATIONS.Visible, function()
         MainFrame.Visible = not MainFrame.Visible
-        if MainFrame.Visible then
-            ToggleUILabel.Text = TRANSLATIONS.ToggleUIVisibility .. ": " .. TRANSLATIONS.Visible
-            ToggleUILabel.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        else
-            ToggleUILabel.Text = TRANSLATIONS.ToggleUIVisibility .. ": " .. TRANSLATIONS.Hidden
-            ToggleUILabel.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-        end
-        Notify(string.format(TRANSLATIONS.UIVisibilityMessage, if MainFrame.Visible then TRANSLATIONS.Visible else TRANSLATIONS.Hidden))
-    end)
+        local isVisible = MainFrame.Visible
+        ToggleUILabel.Text = TRANSLATIONS.ToggleUIVisibility .. ": " .. (isVisible and TRANSLATIONS.Visible or TRANSLATIONS.Hidden)
+        ToggleUILabel.BackgroundColor3 = isVisible and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(80, 80, 80)
+        Notify(string.format(TRANSLATIONS.UIVisibilityMessage, if isVisible then TRANSLATIONS.Visible else TRANSLATIONS.Hidden))
+    end, Color3.fromRGB(60, 60, 60))
 
     local BGTransparencyLabel = Instance.new("TextLabel")
-    BGTransparencyLabel.Name = "BGTransparencyLabel"
+    BGTransparencyLabel.Name = HttpService:GenerateGUID(false)
     BGTransparencyLabel.Size = UDim2.new(1, 0, 0, 20)
     BGTransparencyLabel.BackgroundTransparency = 1
     BGTransparencyLabel.Text = TRANSLATIONS.UIBackgroundTransparency .. ": " .. MainFrame.BackgroundTransparency
@@ -877,22 +887,7 @@ do
     BGTransparencyLabel.TextXAlignment = Enum.TextXAlignment.Left
     BGTransparencyLabel.Parent = SettingsContent
 
-    local BGTransparencyInput = Instance.new("TextBox")
-    BGTransparencyInput.Name = "BGTransparencyInput"
-    BGTransparencyInput.Size = UDim2.new(1, 0, 0, 30)
-    BGTransparencyInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    BGTransparencyInput.BorderSizePixel = 0
-    BGTransparencyInput.Text = tostring(MainFrame.BackgroundTransparency)
-    BGTransparencyInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    BGTransparencyInput.TextSize = 14
-    BGTransparencyInput.Font = Enum.Font.Gotham
-    BGTransparencyInput.TextXAlignment = Enum.TextXAlignment.Left
-    BGTransparencyInput.Parent = SettingsContent
-
-    local UICorner_BGTransparencyInput = Instance.new("UICorner")
-    UICorner_BGTransparencyInput.CornerRadius = UDim.new(0, 5)
-    UICorner_BGTransparencyInput.Parent = BGTransparencyInput
-
+    local BGTransparencyInput = createPlayerInputField(SettingsContent, "0 - 1 (e.g., 0.2)", tostring(MainFrame.BackgroundTransparency))
     BGTransparencyInput.Changed:Connect(function(property)
         if property == "Text" then
             local newTransparency = tonumber(BGTransparencyInput.Text)
@@ -903,7 +898,7 @@ do
     end)
 
     local UISizeLabel = Instance.new("TextLabel")
-    UISizeLabel.Name = "UISizeLabel"
+    UISizeLabel.Name = HttpService:GenerateGUID(false)
     UISizeLabel.Size = UDim2.new(1, 0, 0, 20)
     UISizeLabel.BackgroundTransparency = 1
     UISizeLabel.Text = TRANSLATIONS.UISize .. ": " .. MainFrame.Size.X.Offset .. " x " .. MainFrame.Size.Y.Offset
@@ -912,23 +907,7 @@ do
     UISizeLabel.TextXAlignment = Enum.TextXAlignment.Left
     UISizeLabel.Parent = SettingsContent
 
-    local UISizeInput = Instance.new("TextBox")
-    UISizeInput.Name = "UISizeInput"
-    UISizeInput.Size = UDim2.new(1, 0, 0, 30)
-    UISizeInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    UISizeInput.BorderSizePixel = 0
-    UISizeInput.PlaceholderText = "ទទឹង x កម្ពស់ (ឧ. 320x500)"
-    UISizeInput.Text = MainFrame.Size.X.Offset .. "x" .. MainFrame.Size.Y.Offset
-    UISizeInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-    UISizeInput.TextSize = 14
-    UISizeInput.Font = Enum.Font.Gotham
-    UISizeInput.TextXAlignment = Enum.TextXAlignment.Left
-    UISizeInput.Parent = SettingsContent
-
-    local UICorner_UISizeInput = Instance.new("UICorner")
-    UICorner_UISizeInput.CornerRadius = UDim.new(0, 5)
-    UICorner_UISizeInput.Parent = UISizeInput
-
+    local UISizeInput = createPlayerInputField(SettingsContent, "ទទឹង x កម្ពស់ (ឧ. 500x350)", MainFrame.Size.X.Offset .. "x" .. MainFrame.Size.Y.Offset)
     UISizeInput.Changed:Connect(function(property)
         if property == "Text" then
             local parts = string.split(UISizeInput.Text, "x")
@@ -942,41 +921,28 @@ do
         end
     end)
 
-    local ApplySettingsButton = Instance.new("TextButton")
-    ApplySettingsButton.Name = "ApplySettingsButton"
-    ApplySettingsButton.Size = UDim2.new(1, 0, 0, 30)
-    ApplySettingsButton.BackgroundColor3 = Color3.fromRGB(50, 150, 100)
-    ApplySettingsButton.BorderSizePixel = 0
-    ApplySettingsButton.Text = TRANSLATIONS.ApplyUISettings
-    ApplySettingsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ApplySettingsButton.TextSize = 16
-    ApplySettingsButton.Font = Enum.Font.GothamBold
-    ApplySettingsButton.Parent = SettingsContent
-
-    local UICorner_ApplySettingsButton = Instance.new("UICorner")
-    UICorner_ApplySettingsButton.CornerRadius = UDim.new(0, 5)
-    UICorner_ApplySettingsButton.Parent = ApplySettingsButton
-
-    ApplySettingsButton.MouseButton1Click:Connect(function()
+    createButton(SettingsContent, TRANSLATIONS.ApplyUISettings, function()
         local newTransparency = tonumber(BGTransparencyInput.Text)
         if newTransparency ~= nil and newTransparency >= 0 and newTransparency <= 1 then
             MainFrame.BackgroundTransparency = newTransparency
             TitleBar.BackgroundTransparency = newTransparency * 0.5
-            TabPanel.BackgroundTransparency = newTransparency * 0.5
-            TabContentFrame.BackgroundTransparency = newTransparency
+            SidebarFrame.BackgroundTransparency = newTransparency * 0.5
+            ContentPageFrame.BackgroundTransparency = newTransparency
         end
 
         local parts = string.split(UISizeInput.Text, "x")
         if #parts == 2 then
             local width = tonumber(parts[1])
             local height = tonumber(parts[2])
-            if width and height and width >= 100 and height >= 100 then -- Minimum size
+            if width and height and width >= 200 and height >= 150 then
                 MainFrame.Size = UDim2.new(0, width, 0, height)
                 MainFrame.Position = UDim2.new(0.5, -width / 2, 0.5, -height / 2)
-                TabContentFrame.Size = UDim2.new(1, -10, 1, -(35 + 40 + 5))
+                SidebarFrame.Size = UDim2.new(CONFIG.SidebarWidth, 0, 1, -35)
+                ContentPageFrame.Size = UDim2.new(1 - CONFIG.SidebarWidth, 0, 1, -35)
+                ContentPageFrame.Position = UDim2.new(CONFIG.SidebarWidth, 0, 0, 35)
             end
         end
-    end)
+    end, Color3.fromRGB(50, 150, 100))
 end
 
 -- Event Connections
@@ -996,29 +962,46 @@ end
 setActiveTab("Home")
 
 -- Toggle UI visibility with a keybind
-local isUIVisible = true
 UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
     if input.KeyCode == CONFIG.MenuToggleKey and not gameProcessedEvent then
         MainFrame.Visible = not MainFrame.Visible
-        isUIVisible = not isUIVisible
-        if isUIVisible then
-            Tabs.Settings.Content.ToggleUILabel.Text = TRANSLATIONS.ToggleUIVisibility .. ": " .. TRANSLATIONS.Visible
-            Tabs.Settings.Content.ToggleUILabel.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-        else
-            Tabs.Settings.Content.ToggleUILabel.Text = TRANSLATIONS.ToggleUIVisibility .. ": " .. TRANSLATIONS.Hidden
-            Tabs.Settings.Content.ToggleUILabel.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-        end
-        Notify(string.format(TRANSLATIONS.UIVisibilityMessage, if isUIVisible then TRANSLATIONS.Visible else TRANSLATIONS.Hidden))
+        local isVisible = MainFrame.Visible
+        Tabs.Settings.Content.ToggleUILabel.Text = TRANSLATIONS.ToggleUIVisibility .. ": " .. (isVisible and TRANSLATIONS.Visible or TRANSLATIONS.Hidden)
+        Tabs.Settings.Content.ToggleUILabel.BackgroundColor3 = isVisible and Color3.fromRGB(60, 60, 60) or Color3.fromRGB(80, 80, 80)
+        Notify(string.format(TRANSLATIONS.UIVisibilityMessage, if isVisible then TRANSLATIONS.Visible else TRANSLATIONS.Hidden))
     end
 end)
 
--- Character Added/Removed connections for clean-up (e.g., Fly, Noclip)
+-- Handle CharacterAdded for active speed targets and other movement states
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(character)
+        -- Re-apply targeted walkspeed if player is in activeSpeedTargets
+        if activeSpeedTargets[player.UserId] then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                TweenService:Create(humanoid, CONFIG.TweenInfoDefault, {WalkSpeed = activeSpeedTargets[player.UserId]}):Play()
+            end
+        end
+    end)
+end)
+
 LocalPlayer.CharacterAdded:Connect(function(character)
-    -- Reset Fly/Noclip states on character respawn
-    if FlyState then setupFly(false) setupFly(true) end
-    if NoclipState then setupNoclip(false) setupNoclip(true) end
-    -- Reset JumpPower
-    if character:FindFirstChildOfClass("Humanoid") then
-        character.Humanoid.JumpPower = CONFIG.DefaultJumpPower
+    -- Reset Movement states on character respawn
+    if getFlyState() then setupFly(false) setupFly(true) end
+    if getNoclipState() then setupNoclip(false) setupNoclip(true) end
+    if getInfiniteJumpState() and character:FindFirstChildOfClass("Humanoid") then
+        character.Humanoid.JumpPower = CONFIG.InfiniteJumpPower
     end
+    -- Ensure local player's walkspeed is re-enforced if they are a target
+    if activeSpeedTargets[LocalPlayer.UserId] then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            TweenService:Create(humanoid, CONFIG.TweenInfoDefault, {WalkSpeed = activeSpeedTargets[LocalPlayer.UserId]}):Play()
+        end
+    end
+end)
+
+LocalPlayer.CharacterRemoving:Connect(function()
+    if getFlyState() then setupFly(false) end
+    if getNoclipState() then setupNoclip(false) end
 end)
