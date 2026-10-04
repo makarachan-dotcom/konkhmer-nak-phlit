@@ -1,17 +1,22 @@
-# KONKHMER NAK PHLIT v2
+# KONKHMER NAK PHLIT
 
-ជំនាន់ខ្មែរ | Steal An Egg
+Chili-style loader. GitHub file ខ្លី។ Logic ស្ថិតក្នុង `core.lua`។
+
+## Execute
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/makarachan-dotcom/konkhmer-nak-phlit/main/KONKHMER_NAK_PHLIT.lua"))()
+```
+
+## Files
+
+- `KONKHMER_NAK_PHLIT.lua` — loader (~30 បន្ទាត់)
+- `core.lua` — UI + features
 
 ## Tabs
-- ផ្ទះ — ស្ថានភាព + Rejoin
-- លួច — Auto Steal / Steal All / Big Eggs / Return / Drop / Place / Hatch + Steal Speed
-- ចលនា — WalkSpeed, Jump, InfJump, NoClip, Fly
-- លេងសើច — Slow: គ្មាន | ទាំងអស់ | ជ្រើសរើស (dropdown អ្នកលេង)
-- ប្រព័ន្ធ — Anti-AFK, Destroy (End key)
 
-## ប្រើ
-Copy KONKHMER_NAK_PHLIT.lua → executor → Execute
+ផ្ទាះ · លួច · ចលនា · លេងសើច · ប្រព័ន្ធ
 
-## ចំណាំ
-Auto Steal ត្រូវ bind remote game (structure រួច)
-Slow = client-side
+Slow: គ្មាន / ទាំងអស់ / ជ្រើសរើស
+
+End = បិទ UI
